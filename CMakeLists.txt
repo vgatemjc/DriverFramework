@@ -31,7 +31,6 @@
 #
 ############################################################################
 
-
 cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 
 set(version_major 0)
@@ -108,6 +107,7 @@ include(cmake/df_common.cmake)
 if (NOT "${DF_TARGET}" STREQUAL "qurt")
 
 	list(APPEND df_link_libs pthread)
+	list(APPEND df_link_libs mraa)
 
 	if (NOT APPLE)
 		list(APPEND df_link_libs rt)

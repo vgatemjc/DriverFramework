@@ -36,6 +36,10 @@
 #include "ImuSensor.hpp"
 #include "MPU9250_mag.hpp"
 
+#if defined(__DF_MRAA_LIB)
+#include "mraa.h"
+#endif
+
 namespace DriverFramework
 {
 #define MPUREG_WHOAMI			0x75
@@ -181,7 +185,8 @@ namespace DriverFramework
 
 #if defined(__DF_EDISON)
 // update frequency 250 Hz
-#define MPU9250_MEASURE_INTERVAL_US 4000
+//#define MPU9250_MEASURE_INTERVAL_US 4000
+#define MPU9250_MEASURE_INTERVAL_US 1000
 #elif defined(__DF_RPI_SINGLE)
 // update frequency 1000 Hz,if using rpi1,rpi zero,1000hz may be to higher,please reduce the frequency
 #define MPU9250_MEASURE_INTERVAL_US 1000
@@ -252,6 +257,12 @@ public:
 		m_id.dev_id_s.devtype = DRV_DF_DEVTYPE_MPU9250;
 		// TODO: does the WHOAMI make sense as an address?
 		m_id.dev_id_s.address = MPU_WHOAMI_9250;
+#if defined(__DF_MRAA_LIB)
+//		intr_pin_handle = mraa_gpio_init(38);
+		intr_pin = new mraa::Gpio(38);
+		intr_pin->dir(mraa::DIR_IN);
+		intr_pin->useMmap(true);
+#endif
 	}
 
 	// @return 0 on success, -errno on failure
@@ -275,9 +286,14 @@ public:
 
 	// @return 0 on success, -errno on failure
 	virtual int stop();
+	virtual void _measure();
+
+#if defined(__DF_MRAA_LIB)
+	void setRealTimePriority();
+#endif
 
 protected:
-	virtual void _measure();
+
 	virtual int _publish(struct imu_sensor_data &data);
 
 private:
@@ -294,12 +310,23 @@ private:
 
 	void clear_int_status();
 
+	void set_normal_freq();
+	void set_fast_freq();
+
 	float _last_temp_c;
 	bool _temp_initialized;
 	bool _mag_enabled;
 	float _packets_per_cycle_filtered;
 
 	MPU9250_mag *_mag;
+
+#if defined(__DF_MRAA_LIB)
+	mraa::Gpio *intr_pin;
+//	mraa_gpio_context intr_pin_handle;
+	pthread_t isr_worker_thread = 0;
+#endif
+
+
 };
 
 }

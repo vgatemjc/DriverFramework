@@ -159,7 +159,7 @@ int DevObj::start()
 		DF_LOG_ERR("Err: %s was already started", m_name);
 		return -2;
 	}
-
+#if !defined(__DF_EDISON)
 	// Can't start if no interval specified
 	if (m_sample_interval_usecs == 0) {
 		return -3;
@@ -179,14 +179,15 @@ int DevObj::start()
 			//and one of the schedule() calls will then fail with EBUSY. In that case just retry.
 		} while (m_work_handle.getError() == EBUSY);
 	}
-
+#endif
 	return -m_work_handle.getError();
+
 }
 
 int DevObj::stop()
 {
 	DF_LOG_DEBUG("DevObj::stop %s", m_name);
-
+#if !defined(__DF_EDISON)
 	if (m_work_handle.isValid()) {
 		WorkMgr::releaseWorkHandle(m_work_handle);
 
@@ -194,7 +195,7 @@ int DevObj::stop()
 		// Driver wasn't running
 		return -1;
 	}
-
+#endif
 	return 0;
 }
 
@@ -317,6 +318,7 @@ void DevObj::setSampleInterval(unsigned int sample_interval_usecs)
 {
 	m_sample_interval_usecs = sample_interval_usecs;
 
+#if !defined(__DF_EDISON)
 	// If running
 	if (m_work_handle.isValid()) {
 		if (m_sample_interval_usecs == 0) {
@@ -342,4 +344,6 @@ void DevObj::setSampleInterval(unsigned int sample_interval_usecs)
 			} while (m_work_handle.getError() == EBUSY);
 		}
 	}
+#endif
+
 }

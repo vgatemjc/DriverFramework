@@ -33,6 +33,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <pthread.h>
 #include "math.h"
 #include "DriverFramework.hpp"
 #include "MPU9250.hpp"
@@ -47,10 +48,44 @@
 
 using namespace DriverFramework;
 
+#if defined(__DF_MRAA_LIB)
+void handle_interrupt_mpu9250(void *arg)
+{
+	MPU9250 *obj = (MPU9250 *)arg;
+
+	obj->setRealTimePriority();
+	obj->_measure();
+}
+
+void MPU9250::setRealTimePriority()
+{
+	if(isr_worker_thread == 0)
+	{
+		cpu_set_t cpuset;
+
+		int policy = SCHED_FIFO;
+		sched_param param {};
+
+		param.sched_priority = 10;
+
+		isr_worker_thread = pthread_self();
+
+        CPU_ZERO(&cpuset);
+        CPU_SET(0, &cpuset);
+
+        pthread_setaffinity_np(isr_worker_thread, sizeof(cpu_set_t), &cpuset);
+
+		pthread_setschedparam(isr_worker_thread, policy, &param);
+
+	}
+}
+
+#endif
+
 int MPU9250::mpu9250_init()
 {
 	// Use 1 MHz for normal registers.
-	_setBusFrequency(SPI_FREQUENCY_1MHZ);
+	set_normal_freq();
 
 	/* Zero the struct */
 	m_synchronize.lock();
@@ -114,6 +149,17 @@ int MPU9250::mpu9250_init()
 
 	usleep(1000);
 
+#if defined(__DF_MRAA_LIB)
+
+	// Reset and do not enable FIFO
+	result = _writeReg(MPUREG_USER_CTRL,
+			   BITS_USER_CTRL_FIFO_RST);
+
+	if (result != 0) {
+		DF_LOG_ERR("user ctrl 2 failed");
+	}
+
+#else
 	// Reset and enable FIFO.
 	result = _writeReg(MPUREG_USER_CTRL,
 			   BITS_USER_CTRL_FIFO_RST |
@@ -143,6 +189,7 @@ int MPU9250::mpu9250_init()
 	if (result != 0) {
 		DF_LOG_ERR("FIFO enable failed");
 	}
+#endif
 
 	usleep(1000);
 
@@ -250,6 +297,23 @@ int MPU9250::mpu9250_deinit()
 	return 0;
 }
 
+void MPU9250::set_normal_freq()
+{
+	_setBusFrequency(SPI_FREQUENCY_1MHZ);
+}
+void MPU9250::set_fast_freq()
+{
+#if defined(__DF_EDISON)
+	//FIFO corrupt at 10MHz.
+	_setBusFrequency(SPI_FREQUENCY_10MHZ);
+#elif defined(__DF_RPI_SINGLE)
+	_setBusFrequency(SPI_FREQUENCY_5MHZ);
+#else
+	_setBusFrequency(SPI_FREQUENCY_10MHZ);
+#endif
+}
+
+
 int MPU9250::start()
 {
 	/* Open the device path specified in the class initialization. */
@@ -263,7 +327,8 @@ int MPU9250::start()
 	}
 
 	/* Set the bus frequency for register get/set. */
-	result = _setBusFrequency(SPI_FREQUENCY_1MHZ);
+//	result = _setBusFrequency(SPI_FREQUENCY_1MHZ);
+	set_normal_freq();
 
 	if (result != 0) {
 		DF_LOG_ERR("failed setting SPI bus frequency: %d", result);
@@ -299,6 +364,13 @@ int MPU9250::start()
 		return result;
 	}
 
+#if defined(__DF_MRAA_LIB)
+	intr_pin->isr(mraa::EDGE_RISING, &handle_interrupt_mpu9250, (void *)this);
+
+	result = _writeReg(MPUREG_INT_PIN_CFG, BIT_INT_ANYRD_2CLEAR);
+	result = _writeReg(MPUREG_INT_ENABLE, BIT_RAW_RDY_EN);
+#endif
+
 exit:
 	return result;
 }
@@ -332,7 +404,8 @@ int MPU9250::get_fifo_count()
 	int16_t num_bytes = 0x0;
 
 	// Use 1 MHz for normal registers.
-	_setBusFrequency(SPI_FREQUENCY_1MHZ);
+//	_setBusFrequency(SPI_FREQUENCY_1MHZ);
+	set_fast_freq();
 	int ret = _bulkRead(MPUREG_FIFO_COUNTH, (uint8_t *) &num_bytes,
 			    sizeof(num_bytes));
 
@@ -352,7 +425,8 @@ int MPU9250::get_fifo_count()
 void MPU9250::reset_fifo()
 {
 	// Use 1 MHz for normal registers.
-	_setBusFrequency(SPI_FREQUENCY_1MHZ);
+//	_setBusFrequency(SPI_FREQUENCY_1MHZ);
+	set_normal_freq();
 
 	int result;
 
@@ -381,7 +455,10 @@ void MPU9250::clear_int_status()
 void MPU9250::_measure()
 {
 	// Use 1 MHz for normal registers.
-	_setBusFrequency(SPI_FREQUENCY_1MHZ);
+//	_setBusFrequency(SPI_FREQUENCY_1MHZ);
+	set_fast_freq();
+	int result;
+#if !defined(__DF_MRAA_LIB)
 	uint8_t int_status = 0;
 	int result = _readReg(MPUREG_INT_STATUS, int_status);
 
@@ -402,7 +479,7 @@ void MPU9250::_measure()
 
 		return;
 	}
-
+#endif
 	int size_of_fifo_packet;
 
 	if (_mag_enabled) {
@@ -413,6 +490,9 @@ void MPU9250::_measure()
 	}
 
 	// Get FIFO byte count to read and floor it to the report size.
+#if defined(__DF_MRAA_LIB)
+	int bytes_to_read = size_of_fifo_packet;
+#else
 	int bytes_to_read = get_fifo_count() / size_of_fifo_packet
 			    * size_of_fifo_packet;
 
@@ -428,7 +508,7 @@ void MPU9250::_measure()
 		m_synchronize.unlock();
 		return;
 	}
-
+#endif
 	// Allocate a buffer large enough for n complete packets, read from the
 	// sensor FIFO.
 	const unsigned buf_len = (MPU_MAX_LEN_FIFO_IN_BYTES / size_of_fifo_packet) * size_of_fifo_packet;
@@ -453,17 +533,11 @@ void MPU9250::_measure()
 	//   400 kHz to 100 kHz could cause corruption because this driver wouldn't run as regularly.
 	//
 	// Luckily 10 MHz seems to work fine.
-
-#if defined(__DF_EDISON)
-	//FIFO corrupt at 10MHz.
-	_setBusFrequency(SPI_FREQUENCY_5MHZ);
-#elif defined(__DF_RPI_SINGLE)
-	_setBusFrequency(SPI_FREQUENCY_5MHZ);
+#if defined(__DF_MRAA_LIB)
+	result = _bulkRead(MPUREG_ACCEL_XOUT_H, fifo_read_buf, read_len);
 #else
-	_setBusFrequency(SPI_FREQUENCY_10MHZ);
-#endif
-
 	result = _bulkRead(MPUREG_FIFO_R_W, fifo_read_buf, read_len);
+#endif
 
 	if (result != 0) {
 		m_synchronize.lock();
@@ -565,10 +639,13 @@ void MPU9250::_measure()
 			}
 		}
 
+#if defined(__DF_MRAA_LIB)
+		m_sensor_data.fifo_sample_interval_us = 1000;
+#else
 		// Pass on the sampling interval between FIFO samples at 8kHz.
 		m_sensor_data.fifo_sample_interval_us = 1000000 / MPU9250_MEASURE_INTERVAL_US
 							/ _packets_per_cycle_filtered;
-
+#endif
 		// Flag if this is the last sample, and _publish() should wrap up the data it has received.
 		m_sensor_data.is_last_fifo_sample = ((packet_index + 1) == (read_len / size_of_fifo_packet));
 

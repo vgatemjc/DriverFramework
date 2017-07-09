@@ -43,19 +43,27 @@ if("${DF_TARGET}" STREQUAL "nuttx")
 		)
 	add_dependencies(df_driver_framework platforms__nuttx)
 else()
-	df_add_library(df_driver_framework
-		DriverFramework.cpp
-		WorkMgr.cpp
-		WorkItems.cpp
-		DevMgr.cpp
-		DevObj.cpp
-		SyncObj.cpp
-		DFList.cpp
-		Time.cpp
-		DFDiag.cpp
-		I2CDevObj.cpp
-		SPIDevObj.cpp
+	set (FRAMEWORK_SRC 
+			DriverFramework.cpp
+			WorkMgr.cpp
+			WorkItems.cpp
+			DevMgr.cpp
+			DevObj.cpp
+			SyncObj.cpp
+			DFList.cpp
+			Time.cpp
+			DFDiag.cpp
+			I2CDevObj.cpp
 		)
+			
+	if(USE_MRAA_LIB)	
+		set (FRAMEWORK_SRC ${FRAMEWORK_SRC} SPIDevObjMraa.cpp)
+	else()
+		set (FRAMEWORK_SRC ${FRAMEWORK_SRC} SPIDevObj.cpp)
+	endif()
+
+	df_add_library(df_driver_framework ${FRAMEWORK_SRC})
+	
 endif()
 
 # vim: set noet fenc=utf-8 ff=unix ft=cmake :

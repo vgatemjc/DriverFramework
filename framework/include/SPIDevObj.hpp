@@ -40,6 +40,10 @@
 #include <errno.h>
 #include "DevObj.hpp"
 
+#if defined(__DF_MRAA_LIB)
+#include "mraa.hpp"
+#endif
+
 #pragma once
 
 namespace DriverFramework
@@ -84,8 +88,11 @@ protected:
 
 	int _bulkRead(uint8_t address, uint8_t *out_buffer, int length);
 	int _setBusFrequency(SPI_FREQUENCY freq_hz);
-
+#if defined(__DF_MRAA_LIB)
+	mraa::Spi* spi;
+#else
 	int m_fd = 0;
+#endif
 };
 
 };
