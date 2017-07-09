@@ -329,5 +329,9 @@ private:
 
 };
 
+#if defined(__DF_MRAA_LIB)
+void handle_interrupt_mpu9250(void *arg);
+#endif
+
 }
 // namespace DriverFramework

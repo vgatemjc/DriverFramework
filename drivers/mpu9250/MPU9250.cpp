@@ -49,7 +49,7 @@
 using namespace DriverFramework;
 
 #if defined(__DF_MRAA_LIB)
-void handle_interrupt_mpu9250(void *arg)
+void DriverFramework::handle_interrupt_mpu9250(void *arg)
 {
 	MPU9250 *obj = (MPU9250 *)arg;
 
