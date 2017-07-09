@@ -460,7 +460,7 @@ void MPU9250::_measure()
 	int result;
 #if !defined(__DF_MRAA_LIB)
 	uint8_t int_status = 0;
-	int result = _readReg(MPUREG_INT_STATUS, int_status);
+	result = _readReg(MPUREG_INT_STATUS, int_status);
 
 	if (result != 0) {
 		m_synchronize.lock();
